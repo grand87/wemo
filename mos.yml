@@ -1,14 +1,11 @@
 description: wemo device emulation
-author: NG Solutions <grandamx@gmail.com>
+author: Volodymyr "N0dGrand87" Sharaienko <grandamx@gmail.com>
 type: lib
 manifest_version: 2019-04-26
 libs_version: ${mos.version}
 modules_version: ${mos.version}
 mongoose_os_version: ${mos.version}
 version: 1.0
-
-config_schema:
-  - ["wifi.sta.ip", "192.168.0.101"]
 
 sources:
   - src
@@ -26,7 +23,6 @@ tags:
   - c
   - core
   - js
-  - docs:misc:Crontab
 
 libs:
   - origin: https://github.com/mongoose-os-libs/boards
