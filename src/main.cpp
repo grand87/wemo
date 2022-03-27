@@ -38,8 +38,8 @@ extern void mgos_wemo_add(const char* deviceName,
 }
 #endif
 
-enum mgos_app_init_result mgos_wemo_init(void) {
+bool mgos_wemo_init(void) {
     // TODO: add support to read configuration from the YAML file
     wemoDevice.init();
-    return MGOS_APP_INIT_SUCCESS;
+    return true;
 }

@@ -17,6 +17,7 @@
 
 #include "unpn_server.h"
 
+#include "mgos.h"
 #include "mgos_mongoose.h"
 #include "mgos_net.h"
 
@@ -324,7 +325,7 @@ void UPNPServer::stopUPNPService() {
 }
 
 void UPNPServer::onHTTPEvent(mg_connection* nc, int ev, void* ev_data,
-                                    void* /*user_data*/) {
+                             void* /*user_data*/) {
     UPNPServer* instance = static_cast<UPNPServer*>(nc->user_data);
 
     if (ev == MG_EV_HTTP_REQUEST) {
@@ -334,8 +335,8 @@ void UPNPServer::onHTTPEvent(mg_connection* nc, int ev, void* ev_data,
     }
 }
 
-void UPNPServer::onUPNPEvent(mg_connection* nc, int ev,
-                                    void* /*ev_data*/, void* /*user_data*/) {
+void UPNPServer::onUPNPEvent(mg_connection* nc, int ev, void* /*ev_data*/,
+                             void* /*user_data*/) {
     UPNPServer* instance = static_cast<UPNPServer*>(nc->user_data);
 
     switch (ev) {

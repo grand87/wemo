@@ -17,8 +17,6 @@
 
 #pragma once
 
-#include "mgos.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -26,7 +24,7 @@ extern "C" {
 typedef int (*on_device_control_event_handler)(int isSet, int newState,
                                                void* userData);
 
-enum mgos_app_init_result mgos_app_init(void);
+bool mgos_wemo_init(void);
 
 void mgos_wemo_add(const char* device_name,
                    on_device_control_event_handler event_handler,
