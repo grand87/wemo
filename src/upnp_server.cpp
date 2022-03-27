@@ -39,7 +39,7 @@ constexpr char UPNP_LISTENER_ADDRESS[] = "239.255.255.250";
 constexpr int HTTP_PORT = 80;
 
 constexpr char UPNP_LISTENER_SPEC[] = "udp://239.255.255.250:1900";
-constexpr char UPNP_HTTP_SERVICE_SPEC[] = "tcp://192.168.0.201:1901";
+constexpr char UPNP_HTTP_SERVICE_SPEC[] = "tcp://%s:1901";
 
 constexpr char UNPN_RESPONSE_TEMPLATE[] =
     "HTTP/1.1 200 OK ## copy\r\n"
@@ -281,15 +281,18 @@ bool UPNPServer::onUNPNMessage(mg_connection* nc, const std::string& msg) {
 mg_connection* UPNPServer::initHTTPServer() {
     LOG(LL_DEBUG, ("initHTTPServer for instance %p", (this)));
 
+    char serverSpec[128];
+    snprintf(serverSpec, 128, UPNP_HTTP_SERVICE_SPEC, getLocalIPAddress());
+
     struct mg_connection* lc =
-        mg_bind(mgos_get_mgr(), UPNP_HTTP_SERVICE_SPEC, onHTTPEvent, this);
+        mg_bind(mgos_get_mgr(), serverSpec, onHTTPEvent, this);
     if (lc == NULL) {
-        LOG(LL_ERROR, ("Failed to listen on %s", UPNP_HTTP_SERVICE_SPEC));
+        LOG(LL_ERROR, ("Failed to listen on %s", serverSpec));
         return NULL;
     }
 
     lc->user_data = this;
-    LOG(LL_INFO, ("Listening on %s", UPNP_HTTP_SERVICE_SPEC));
+    LOG(LL_INFO, ("Listening on %s", serverSpec));
 
     mg_set_protocol_http_websocket(lc);
 
@@ -372,7 +375,7 @@ void UPNPServer::onUPNPEvent(mg_connection* nc, int ev, void* /*ev_data*/,
 void UPNPServer::onNetworkEvent(int ev, void* /*evd*/, void* arg) {
     switch (ev) {
         case MGOS_NET_EV_IP_ACQUIRED: {
-            LOG(LL_DEBUG, ("%s", "Net got IP address"));
+            LOG(LL_DEBUG, ("%s", "Net got an IP address"));
             UPNPServer* instance = static_cast<UPNPServer*>(arg);
             instance->startUPNPService();
             break;
