@@ -15,8 +15,6 @@
  * limitations under the License.
  */
 
-load('logging.js');
-
 let WEMO = {
 
   // ## **`MQTT.addDevice(deviceName, setStateHandler, getStateHandler, userdata)`**
