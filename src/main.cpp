@@ -17,6 +17,7 @@
 
 #include "mgos_wemo.h"
 
+#include "mgos.h"
 #include "mgos_mongoose.h"
 #include "unpn_server.h"
 
@@ -41,4 +42,9 @@ extern void mgos_wemo_add(const char* deviceName,
 bool mgos_wemo_init(void) {
     wemoDevice.init();
     return true;
+}
+
+enum mgos_app_init_result mgos_app_init(void) {
+    mgos_wemo_init();
+    return MGOS_APP_INIT_SUCCESS;
 }

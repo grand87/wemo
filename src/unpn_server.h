@@ -41,6 +41,14 @@ class UPNPServer {
     mg_connection* udpServer;
     mg_connection* httpServer;
 
+    bool sendResponseRequest;
+    enum ResponseRequestType {
+        RRT_ROOTDEVICE,
+        RRT_CLOSECOMPANION
+    };
+
+    ResponseRequestType sendResponseRequestType;
+
     std::unordered_map<std::string, DeviceInfo> devices;
     // TODO: define mapping between http server & deviceInfo
 

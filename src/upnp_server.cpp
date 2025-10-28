@@ -25,6 +25,7 @@
 
 #include <lwip/igmp.h>
 #include <lwip/inet.h>
+#include <lwip/ip4_addr.h>
 #include <lwip/ip_addr.h>
 
 #include <string>
@@ -36,12 +37,11 @@ constexpr int UNPN_UDP_PORT = 1900;
 constexpr int UNPN_HTTP_PORT = 1901;
 
 constexpr char UPNP_LISTENER_ADDRESS[] = "239.255.255.250";
-constexpr int HTTP_PORT = 80;
 
 constexpr char UPNP_LISTENER_SPEC[] = "udp://239.255.255.250:1900";
 constexpr char UPNP_HTTP_SERVICE_SPEC[] = "tcp://%s:1901";
 
-constexpr char UNPN_RESPONSE_TEMPLATE[] =
+constexpr char UNPN_RESPONSE_ROOTDEVICE_TEMPLATE[] =
     "HTTP/1.1 200 OK ## copy\r\n"
     "CACHE-CONTROL: max-age=86400\r\n"
     "EXT:\r\n"
@@ -50,8 +50,21 @@ constexpr char UNPN_RESPONSE_TEMPLATE[] =
     "01-NLS: 905bfa3c-1dd2-11b2-8928-%s\r\n"
     "SERVER: Unspecified, UPnP/1.0, Unspecified\r\n"
     "X-User-Agent: redsonic\r\n"
-    "ST: urn:Belkin:device:**\r\n"
-    "USN: uuid:Socket-1_0-221517K0101769::urn:Belkin:device:**\r\n";
+    "ST: urn:rootdevice\r\n"
+    "USN: uuid:Socket-1_0-%s::urn:rootdevice\r\n";
+
+constexpr char UNPN_RESPONSE_CLOSECOMPANION_TEMPLATE[] =
+    "HTTP/1.1 200 OK ## copy\r\n"
+    "CACHE-CONTROL: max-age=86400\r\n"
+    "EXT:\r\n"
+    "LOCATION: http://%s:%d/description.xml\r\n"
+    "OPT: \"http://schemas.upnp.org/upnp/1/0/\"; ns=01\r\n"
+    "01-NLS: 905bfa3c-1dd2-11b2-8928-%s\r\n"
+    "SERVER: Unspecified, UPnP/1.0, Unspecified\r\n"
+    "X-User-Agent: redsonic\r\n"
+    "ST: urn:closecompanion:service:light:1\r\n"
+    "USN: "
+    "uuid:Socket-1_0-%s::urn:closecompanion:service:light:1\r\n";
 
 constexpr int DEVICE_NAME_MAX_LENGTH = 16;
 constexpr int DEVICE_UDN_MAX_LENGTH = 32;
@@ -69,7 +82,7 @@ constexpr char UNPN_DESCRIPTION_DEVICE_TEMPLATE[] =
 constexpr char UNPN_DESCRIPTION_TEMPLATE[] =
     "<?xml version=\"1.0\"?>\r\n"
     "<root>\r\n"
-    "  %s\r\n"
+    "%s\r\n"
     "</root>\r\n";
 
 constexpr char UNPN_CONTROL_RESPONSE_TEMPLATE[] =
@@ -82,19 +95,38 @@ constexpr char UNPN_CONTROL_RESPONSE_TEMPLATE[] =
     "</s:Body>\r\n"
     "</s:Envelope>\r\n";
 
+// bool upnpHALJoinGroup(const char* group) {
+// #ifdef IP4_ADDR_ANY4
+
+//     ip_addr_t group_addr;
+//     group_addr.addr = ipaddr_addr(group);
+
+// #define ADDR IP4_ADDR_ANY4
+// #else
+
+//     ip_addr_t group_addr;
+//     group_addr.addr = ipaddr_addr(group);
+
+// #define ADDR IP_ADDR_ANY
+// #endif
+
+//     err_t err = igmp_joingroup(ADDR, &group_addr);
+//     if (err != ERR_OK) {
+//         LOG(LL_ERROR, ("udp_join_multigroup failed! (%d)", (int)err));
+//         return false;
+//     }
+
+//     return true;
+// }
+
 bool upnpHALJoinGroup(const char* group) {
+    ip4_addr_t group_addr;
+    group_addr.addr = inet_addr(group);
+
 #ifdef IP4_ADDR_ANY4
-
-    ip_addr_t group_addr;
-    group_addr.addr = ipaddr_addr(group);
-
 #define ADDR IP4_ADDR_ANY4
 #else
-
-    ip_addr_t group_addr;
-    group_addr.addr = ipaddr_addr(group);
-
-#define ADDR IP_ADDR_ANY
+#define ADDR IP4_ADDR_ANY
 #endif
 
     err_t err = igmp_joingroup(ADDR, &group_addr);
@@ -105,6 +137,7 @@ bool upnpHALJoinGroup(const char* group) {
 
     return true;
 }
+
 
 static void upnpJoinGroup(const char* address) {
     LOG(LL_INFO, ("Joining %s", address));
@@ -139,13 +172,27 @@ void UPNPServer::sendSearchResponse(struct mg_connection* nc) {
     // TODO: setup timer for some value to avoid flooding - see spec 1.3.3
     // Search response
 
-    char macAddr[32];
-    getMacAddress(macAddr);
-    char response[strlen(UNPN_RESPONSE_TEMPLATE) + 128];
-    snprintf(response, sizeof(response), UNPN_RESPONSE_TEMPLATE,
-             getLocalIPAddress(), UNPN_HTTP_PORT, macAddr);
-    LOG(LL_DEBUG, ("onUNPNMessage response \n%s", (response)));
-    mg_send(nc, response, strlen(response));
+    // TODO: implement for each device
+
+    if (sendResponseRequest) {
+        const char* macAddr = mgos_sys_ro_vars_get_mac_address();
+
+        const char* responseTemplate =
+            sendResponseRequestType == RRT_ROOTDEVICE
+                ? UNPN_RESPONSE_ROOTDEVICE_TEMPLATE
+                : UNPN_RESPONSE_CLOSECOMPANION_TEMPLATE;
+
+        LOG(LL_INFO, ("Response for %d", sendResponseRequestType));
+
+        char response[strlen(responseTemplate) + 128];
+        snprintf(response, sizeof(response), responseTemplate,
+                 getLocalIPAddress(), UNPN_HTTP_PORT, macAddr, macAddr);
+        LOG(LL_DEBUG, ("onUNPNMessage response \n%s", (response)));
+        LOG(LL_DEBUG, ("onUNPNMessage response %d bytes", (strlen(response))));
+
+        mg_send(nc, response, strlen(response));
+        sendResponseRequest = false;
+    }
 }
 
 bool UPNPServer::onHTTPMessage(mg_connection* nc, http_message* message) {
@@ -271,7 +318,15 @@ bool UPNPServer::onUNPNMessage(mg_connection* nc, const std::string& msg) {
         LOG(LL_DEBUG, ("onUNPNMessage content \n%s", (msg.c_str())));
         if (msg.find("ssdp:discover", found + 1) != std::string::npos ||
             msg.find("upnp:rootdevice", found + 1) != std::string::npos) {
-            sendSearchResponse(nc);
+            sendResponseRequest = true;
+
+            if (msg.find("urn:closecompanion:service:light:1", found + 1) !=
+                std::string::npos) {
+                sendResponseRequestType = RRT_CLOSECOMPANION;
+            } else {
+                sendResponseRequestType = RRT_ROOTDEVICE;
+            }
+
             return true;
         }
     }
@@ -300,16 +355,7 @@ mg_connection* UPNPServer::initHTTPServer() {
 }
 
 void UPNPServer::initUDPServer() {
-    // A listener for UDP broadcasts to address 239.255.255.250 on port
-    // 1900. A listener on port 49153 for each switch on its associated IP
-    // address. Logic to customize the search response and the setup.xml to
-    // conform to the UPnP protocol and give the Echo the right information
-    // about each switch. Logic to respond to the on and off commands sent
-    // by the Echo and tie them to whatever action I wanted to really
-    // perform.
-
     LOG(LL_INFO, ("initUDPServer for instance %p", (this)));
-
     udpServer = upnpGetListener(UPNP_LISTENER_ADDRESS, UNPN_UDP_PORT,
                                 onUPNPEvent, this);
 }
@@ -325,15 +371,15 @@ bool UPNPServer::startUPNPService() {
 
 void UPNPServer::stopUPNPService() {
     // TODO: added error checking
+    LOG(LL_ERROR, ("%s", "stopUPNPService() event not implemented"));
 }
 
 void UPNPServer::onHTTPEvent(mg_connection* nc, int ev, void* ev_data,
                              void* /*user_data*/) {
-    UPNPServer* instance = static_cast<UPNPServer*>(nc->user_data);
-
     if (ev == MG_EV_HTTP_REQUEST) {
         LOG(LL_DEBUG, ("onHTTPEvent MG_EV_HTTP_REQUEST event"));
         struct http_message* hm = static_cast<http_message*>(ev_data);
+        UPNPServer* instance = static_cast<UPNPServer*>(nc->user_data);
         instance->onHTTPMessage(nc, hm);
     }
 }
@@ -343,22 +389,38 @@ void UPNPServer::onUPNPEvent(mg_connection* nc, int ev, void* /*ev_data*/,
     UPNPServer* instance = static_cast<UPNPServer*>(nc->user_data);
 
     switch (ev) {
-        case MG_EV_POLL:
+        case MG_EV_POLL: {
+            // LOG(LL_DEBUG, ("onUPNPEvent MG_EV_POLL event"));
+            if (instance->sendResponseRequest) {
+                instance->sendSearchResponse(nc);
+                nc->flags |= MG_F_SEND_AND_CLOSE;
+            }
             break;
+        }
         case MG_EV_ACCEPT: {
             LOG(LL_DEBUG, ("onUPNPEvent MG_EV_ACCEPT event"));
+            instance->sendResponseRequest = false;
             break;
         }
         case MG_EV_RECV: {
+            LOG(LL_DEBUG, ("onUPNPEvent MG_EV_RECV event"));
+
             struct mbuf* io = &nc->recv_mbuf;
 
             char* buffer = static_cast<char*>(io->buf);
             buffer[io->len] = 0;
             const std::string message(buffer);
-            if (!instance->onUNPNMessage(nc, message))
-                LOG(LL_DEBUG,
-                    ("onUPNPEvent MG_EV_RECV event, size %d", (io->len)));
-            mbuf_remove(io, io->len);
+            if (instance->onUNPNMessage(nc, message)) {
+                nc->flags &= ~MG_F_SEND_AND_CLOSE;
+            } else {
+                mbuf_remove(io, io->len);
+                nc->flags |= MG_F_CLOSE_IMMEDIATELY;
+            }
+            break;
+        }
+        case MG_EV_SEND: {
+            LOG(LL_DEBUG, ("onUPNPEvent MG_EV_SEND event"));
+            nc->flags |= MG_F_SEND_AND_CLOSE;
             break;
         }
         case MG_EV_CLOSE: {
@@ -375,15 +437,17 @@ void UPNPServer::onUPNPEvent(mg_connection* nc, int ev, void* /*ev_data*/,
 void UPNPServer::onNetworkEvent(int ev, void* /*evd*/, void* arg) {
     switch (ev) {
         case MGOS_NET_EV_IP_ACQUIRED: {
-            LOG(LL_DEBUG, ("%s", "Net got an IP address"));
+            LOG(LL_DEBUG, ("Net got an IP address"));
             UPNPServer* instance = static_cast<UPNPServer*>(arg);
             instance->startUPNPService();
             break;
         }
-        case MGOS_NET_EV_DISCONNECTED:
-            LOG(LL_ERROR,
-                ("%s", "MGOS_NET_EV_DISCONNECTED event not implemented"));
-            // TODO: handle network disconnected event
+        case MGOS_NET_EV_DISCONNECTED: {
+            LOG(LL_DEBUG, ("Net lost connection"));
+            UPNPServer* instance = static_cast<UPNPServer*>(arg);
+            instance->stopUPNPService();
+            break;
+        }
         default:
             break;
     }
@@ -394,7 +458,8 @@ bool UPNPServer::isValidDeviceInfo(const DeviceInfo& deviceInfo) const {
     return true;
 }
 
-UPNPServer::UPNPServer() : udpServer(nullptr), httpServer(nullptr) {}
+UPNPServer::UPNPServer()
+    : udpServer(nullptr), httpServer(nullptr), sendResponseRequest(false) {}
 
 void UPNPServer::init() {
     // register to wait on network ready
