@@ -21,12 +21,9 @@
 #include <mgos_config.h>
 #include <stdio.h>
 
-
 void getMacAddress(char* result) {
     uint8_t buffer[6];
     device_get_mac_address(buffer);
     sprintf(result, "%02x%02x%02x%02x%02x%02x", buffer[0], buffer[1], buffer[2],
             buffer[3], buffer[4], buffer[5]);
 }
-
-const char* getLocalIPAddress() { return mgos_sys_config_get_wifi_sta_ip(); }

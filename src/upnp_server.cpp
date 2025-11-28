@@ -17,16 +17,17 @@
 
 #include "unpn_server.h"
 
+#include <mgos_config.h>
 #include "mgos.h"
 #include "mgos_mongoose.h"
 #include "mgos_net.h"
 
 #include "utils.h"
 
-#include <lwip/igmp.h>
-#include <lwip/inet.h>
-#include <lwip/ip4_addr.h>
-#include <lwip/ip_addr.h>
+#include "lwip/igmp.h"
+#include "lwip/inet.h"
+
+#include "lwip/ip_addr.h"
 
 #include <string>
 #include <unordered_map>
@@ -95,38 +96,14 @@ constexpr char UNPN_CONTROL_RESPONSE_TEMPLATE[] =
     "</s:Body>\r\n"
     "</s:Envelope>\r\n";
 
-// bool upnpHALJoinGroup(const char* group) {
-// #ifdef IP4_ADDR_ANY4
-
-//     ip_addr_t group_addr;
-//     group_addr.addr = ipaddr_addr(group);
-
-// #define ADDR IP4_ADDR_ANY4
-// #else
-
-//     ip_addr_t group_addr;
-//     group_addr.addr = ipaddr_addr(group);
-
-// #define ADDR IP_ADDR_ANY
-// #endif
-
-//     err_t err = igmp_joingroup(ADDR, &group_addr);
-//     if (err != ERR_OK) {
-//         LOG(LL_ERROR, ("udp_join_multigroup failed! (%d)", (int)err));
-//         return false;
-//     }
-
-//     return true;
-// }
-
 bool upnpHALJoinGroup(const char* group) {
-    ip4_addr_t group_addr;
+    ip_addr_t group_addr;
     group_addr.addr = inet_addr(group);
 
 #ifdef IP4_ADDR_ANY4
 #define ADDR IP4_ADDR_ANY4
 #else
-#define ADDR IP4_ADDR_ANY
+#define ADDR IP_ADDR_ANY
 #endif
 
     err_t err = igmp_joingroup(ADDR, &group_addr);
@@ -138,13 +115,14 @@ bool upnpHALJoinGroup(const char* group) {
     return true;
 }
 
-
 static void upnpJoinGroup(const char* address) {
     LOG(LL_INFO, ("Joining %s", address));
     if (!upnpHALJoinGroup(address)) {
         LOG(LL_ERROR, ("Failed to join %s", address));
     }
 }
+
+const char* getLocalIPAddress() { return mgos_sys_config_get_wifi_sta_ip(); }
 
 struct mg_connection* upnpGetListener(const char* address, int port,
                                       mg_event_handler_t handler,

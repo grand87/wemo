@@ -42,10 +42,7 @@ class UPNPServer {
     mg_connection* httpServer;
 
     bool sendResponseRequest;
-    enum ResponseRequestType {
-        RRT_ROOTDEVICE,
-        RRT_CLOSECOMPANION
-    };
+    enum ResponseRequestType { RRT_ROOTDEVICE, RRT_CLOSECOMPANION };
 
     ResponseRequestType sendResponseRequestType;
 

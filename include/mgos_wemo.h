@@ -24,8 +24,6 @@ extern "C" {
 typedef int (*on_device_control_event_handler)(int isSet, int newState,
                                                void* userData);
 
-bool mgos_wemo_init(void);
-
 void mgos_wemo_add(const char* device_name,
                    on_device_control_event_handler event_handler,
                    void* userData);

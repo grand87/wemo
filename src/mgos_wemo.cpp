@@ -35,16 +35,11 @@ extern void mgos_wemo_add(const char* deviceName,
     wemoDevice.addDevice(newDevice);
 }
 
-#ifdef __cplusplus
-}
-#endif
-
-bool mgos_wemo_init(void) {
+extern bool mgos_wemo_init(void) {
     wemoDevice.init();
     return true;
 }
 
-enum mgos_app_init_result mgos_app_init(void) {
-    mgos_wemo_init();
-    return MGOS_APP_INIT_SUCCESS;
+#ifdef __cplusplus
 }
+#endif

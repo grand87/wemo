@@ -20,6 +20,4 @@
 
 void getMacAddress(char* buffer);
 
-const char* getLocalIPAddress();
-
 #endif /*__NGSOLUTIONS_UTILS__*/
