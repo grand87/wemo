@@ -15,9 +15,15 @@
  * limitations under the License.
  */
 
+load('api_log.js');
+
+Log.info('Wemo lib load start');
+
 let WEMO = {
 
   // ## **`MQTT.addDevice(deviceName, setStateHandler, getStateHandler, userdata)`**
   addDevice: ffi('void mgos_wemo_add(char *, int (*)(int, int, userdata), userdata)'),
 
 };
+
+Log.info('Wemo lib load finished');

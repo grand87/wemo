@@ -43,16 +43,16 @@ constexpr char UPNP_LISTENER_SPEC[] = "udp://239.255.255.250:1900";
 constexpr char UPNP_HTTP_SERVICE_SPEC[] = "tcp://%s:1901";
 
 constexpr char UNPN_RESPONSE_ROOTDEVICE_TEMPLATE[] =
-    "HTTP/1.1 200 OK ## copy\r\n"
+    "HTTP/1.1 200 OK\r\n"
     "CACHE-CONTROL: max-age=86400\r\n"
-    "EXT:\r\n"
+    "EXT: \r\n"
     "LOCATION: http://%s:%d/description.xml\r\n"
-    "OPT: \"http://schemas.upnp.org/upnp/1/0/\"; ns=01\r\n"
-    "01-NLS: 905bfa3c-1dd2-11b2-8928-%s\r\n"
-    "SERVER: Unspecified, UPnP/1.0, Unspecified\r\n"
-    "X-User-Agent: redsonic\r\n"
-    "ST: urn:rootdevice\r\n"
-    "USN: uuid:Socket-1_0-%s::urn:rootdevice\r\n";
+    // "OPT: \"http://schemas.upnp.org/upnp/1/0/\"; ns=01\r\n"
+    // "01-NLS: 905bfa3c-1dd2-11b2-8928-%s\r\n"
+    "Server: POSIX UPnP/1.0 UPnP Stack/7.14.164.17\r\n"
+    // "X-User-Agent: redsonic\r\n"
+    "ST: upnp:rootdevice\r\n"
+    "USN: uuid:Socket-1_0-%s::upnp:rootdevice\r\n";
 
 constexpr char UNPN_RESPONSE_CLOSECOMPANION_TEMPLATE[] =
     "HTTP/1.1 200 OK ## copy\r\n"
@@ -64,8 +64,7 @@ constexpr char UNPN_RESPONSE_CLOSECOMPANION_TEMPLATE[] =
     "SERVER: Unspecified, UPnP/1.0, Unspecified\r\n"
     "X-User-Agent: redsonic\r\n"
     "ST: urn:closecompanion:service:light:1\r\n"
-    "USN: "
-    "uuid:Socket-1_0-%s::urn:closecompanion:service:light:1\r\n";
+    "USN: uuid:Socket-1_0-%s::urn:closecompanion:service:light:1\r\n";
 
 constexpr int DEVICE_NAME_MAX_LENGTH = 16;
 constexpr int DEVICE_UDN_MAX_LENGTH = 32;
@@ -151,31 +150,42 @@ void UPNPServer::sendSearchResponse(struct mg_connection* nc) {
     // Search response
 
     // TODO: implement for each device
+    const char* macAddr = mgos_sys_ro_vars_get_mac_address();
 
-    if (sendResponseRequest) {
-        const char* macAddr = mgos_sys_ro_vars_get_mac_address();
+    const char* responseTemplate = sendResponseRequestType == RRT_ROOTDEVICE
+                                       ? UNPN_RESPONSE_ROOTDEVICE_TEMPLATE
+                                       : UNPN_RESPONSE_CLOSECOMPANION_TEMPLATE;
 
-        const char* responseTemplate =
-            sendResponseRequestType == RRT_ROOTDEVICE
-                ? UNPN_RESPONSE_ROOTDEVICE_TEMPLATE
-                : UNPN_RESPONSE_CLOSECOMPANION_TEMPLATE;
+    LOG(LL_INFO,
+        ("sendSearchResponse: response for %d", sendResponseRequestType));
 
-        LOG(LL_INFO, ("Response for %d", sendResponseRequestType));
+    char response[strlen(responseTemplate) + 128];
+    snprintf(response, sizeof(response), responseTemplate, getLocalIPAddress(),
+             UNPN_HTTP_PORT, macAddr, macAddr);
+    // LOG(LL_INFO, ("sendSearchResponse message:\n%s", (response)));
+    LOG(LL_INFO, ("onUNPNMessage response %d bytes", (strlen(response))));
 
-        char response[strlen(responseTemplate) + 128];
-        snprintf(response, sizeof(response), responseTemplate,
-                 getLocalIPAddress(), UNPN_HTTP_PORT, macAddr, macAddr);
-        LOG(LL_DEBUG, ("onUNPNMessage response \n%s", (response)));
-        LOG(LL_DEBUG, ("onUNPNMessage response %d bytes", (strlen(response))));
+    char source_addr[50] = "";
+    mg_sock_addr_to_str(&nc->sa, source_addr, 50,
+                        MG_SOCK_STRINGIFY_IP | MG_SOCK_STRINGIFY_PORT);
 
-        mg_send(nc, response, strlen(response));
-        sendResponseRequest = false;
-    }
+    std::string client_addr = std::string("udp://") + source_addr;
+
+    mg_connection* c =
+        mg_connect(mgos_get_mgr(), client_addr.c_str(), onUDPOutEvent, this);
+    mg_send(c, response, strlen(response));
 }
 
 bool UPNPServer::onHTTPMessage(mg_connection* nc, http_message* message) {
+    char source_addr[50] = "";
+    mg_sock_addr_to_str(&nc->sa, source_addr, 50,
+                        MG_SOCK_STRINGIFY_IP | MG_SOCK_STRINGIFY_PORT);
+
+    LOG(LL_INFO,
+        ("onHTTPMessage from %s\n", source_addr));
+
     mg_str uriNullTerminated = mg_strdup_nul(message->uri);
-    LOG(LL_DEBUG, ("onHTTPMessage uri %s", uriNullTerminated.p));
+    LOG(LL_INFO, ("onHTTPMessage uri %s", uriNullTerminated.p));
     mg_strfree(&uriNullTerminated);
     const bool isGet = mg_vcasecmp(&message->method, "get") == 0;
     return processHTTPMessage(nc, isGet, message->uri, message->body);
@@ -214,6 +224,7 @@ void UPNPServer::populateDeviceDescription(char* buffer, int bufferSize) const {
     // const int response_size = calculateDeviceDescriptionSize();
     char device_info_str[bufferSize];
     char* msg = device_info_str;
+    *msg = 0;
     int pos = 0;
     for (auto& d : devices) {
         snprintf(msg, bufferSize - pos, UNPN_DESCRIPTION_DEVICE_TEMPLATE,
@@ -222,15 +233,19 @@ void UPNPServer::populateDeviceDescription(char* buffer, int bufferSize) const {
         msg += pos;
     }
 
+    LOG(LL_DEBUG,
+        ("populateDeviceDescription device_info_str %s", device_info_str));
     snprintf(buffer, bufferSize, UNPN_DESCRIPTION_TEMPLATE, device_info_str);
+
+    LOG(LL_DEBUG, ("populateDeviceDescription buffer %s", buffer));
 }
 
 bool UPNPServer::processDescriptionRequest(mg_connection* nc,
-                                           const mg_str& body) {
-    LOG(LL_DEBUG, ("processDescriptionRequest()"));
-
+                                           const mg_str& /*body*/) {
     const int response_size = calculateDeviceDescriptionSize();
     char response[response_size];
+    LOG(LL_DEBUG,
+        ("processDescriptionRequest response_size %d", response_size));
     populateDeviceDescription(response, response_size);
 
     return sendHTTPResponse(nc, 200, response);
@@ -281,7 +296,7 @@ bool UPNPServer::processControlRequest(mg_connection* nc, const mg_str& body) {
 
 bool UPNPServer::sendHTTPResponse(mg_connection* nc, int status_code,
                                   const char* message) {
-    LOG(LL_DEBUG, ("sendHTTPResponse \n%s", (message)));
+    LOG(LL_INFO, ("sendHTTPResponse \n%s", (message)));
 
     // TODO: add argument to define content type (enum)
     mg_send_head(nc, status_code, strlen(message), "Content-Type: text/xml");
@@ -291,23 +306,37 @@ bool UPNPServer::sendHTTPResponse(mg_connection* nc, int status_code,
 }
 
 bool UPNPServer::onUNPNMessage(mg_connection* nc, const std::string& msg) {
-    std::size_t found = msg.find("M-SEARCH");
-    if (found != std::string::npos) {
-        LOG(LL_DEBUG, ("onUNPNMessage content \n%s", (msg.c_str())));
-        if (msg.find("ssdp:discover", found + 1) != std::string::npos ||
-            msg.find("upnp:rootdevice", found + 1) != std::string::npos) {
-            sendResponseRequest = true;
+    // TODO: convert int DEBUG
+    std::size_t msgPos = msg.find("M-SEARCH");
+    if (msgPos != std::string::npos) {
+        char source_addr[50] = "";
+        mg_sock_addr_to_str(&nc->sa, source_addr, 50,
+                            MG_SOCK_STRINGIFY_IP | MG_SOCK_STRINGIFY_PORT);
 
-            if (msg.find("urn:closecompanion:service:light:1", found + 1) !=
+        LOG(LL_INFO,
+            ("onUNPNMessage content from %s \n%s\n", source_addr, msg.c_str()));
+        if (msg.find("ssdp:discover", msgPos + 1) != std::string::npos ||
+            msg.find("upnp:rootdevice", msgPos + 1) != std::string::npos) {
+            if (msg.find("urn:closecompanion:service:light:1", msgPos + 1) !=
                 std::string::npos) {
                 sendResponseRequestType = RRT_CLOSECOMPANION;
             } else {
                 sendResponseRequestType = RRT_ROOTDEVICE;
             }
-
+            // TODO: make response handling here
             return true;
         }
+        return false;
     }
+
+    msgPos = msg.find("NOTIFY");
+    if (msgPos != std::string::npos) {
+        // notify message from other devices in network, ignoring
+        return false;
+    }
+
+    LOG(LL_INFO, ("onUNPNMessage content \n%s\n", (msg.c_str())));
+
     return false;
 }
 
@@ -355,7 +384,7 @@ void UPNPServer::stopUPNPService() {
 void UPNPServer::onHTTPEvent(mg_connection* nc, int ev, void* ev_data,
                              void* /*user_data*/) {
     if (ev == MG_EV_HTTP_REQUEST) {
-        LOG(LL_DEBUG, ("onHTTPEvent MG_EV_HTTP_REQUEST event"));
+        LOG(LL_INFO, ("onHTTPEvent MG_EV_HTTP_REQUEST event"));
         struct http_message* hm = static_cast<http_message*>(ev_data);
         UPNPServer* instance = static_cast<UPNPServer*>(nc->user_data);
         instance->onHTTPMessage(nc, hm);
@@ -365,48 +394,87 @@ void UPNPServer::onHTTPEvent(mg_connection* nc, int ev, void* ev_data,
 void UPNPServer::onUPNPEvent(mg_connection* nc, int ev, void* /*ev_data*/,
                              void* /*user_data*/) {
     UPNPServer* instance = static_cast<UPNPServer*>(nc->user_data);
+    if (instance == NULL) {
+        LOG(LL_INFO, ("onUPNPEvent MG_EV_ACCEPT instance NULL"));
+    }
 
     switch (ev) {
         case MG_EV_POLL: {
             // LOG(LL_DEBUG, ("onUPNPEvent MG_EV_POLL event"));
-            if (instance->sendResponseRequest) {
-                instance->sendSearchResponse(nc);
-                nc->flags |= MG_F_SEND_AND_CLOSE;
-            }
             break;
         }
         case MG_EV_ACCEPT: {
-            LOG(LL_DEBUG, ("onUPNPEvent MG_EV_ACCEPT event"));
-            instance->sendResponseRequest = false;
+            // LOG(LL_INFO, ("onUPNPEvent MG_EV_ACCEPT event"));
             break;
         }
         case MG_EV_RECV: {
-            LOG(LL_DEBUG, ("onUPNPEvent MG_EV_RECV event"));
+            LOG(LL_INFO, ("onUPNPEvent MG_EV_RECV event"));
 
             struct mbuf* io = &nc->recv_mbuf;
-
             char* buffer = static_cast<char*>(io->buf);
             buffer[io->len] = 0;
             const std::string message(buffer);
             if (instance->onUNPNMessage(nc, message)) {
-                nc->flags &= ~MG_F_SEND_AND_CLOSE;
+                instance->sendSearchResponse(nc);
+                // MG_EV_SEND will be delivered when the data has actually been
+                // pushed out
+                nc->flags |= MG_F_SEND_AND_CLOSE;
+                // nc->flags &= ~MG_F_SEND_AND_CLOSE;
             } else {
-                mbuf_remove(io, io->len);
+                // mbuf_remove(io, io->len);
                 nc->flags |= MG_F_CLOSE_IMMEDIATELY;
             }
+            mbuf_clear(&nc->recv_mbuf);
             break;
         }
         case MG_EV_SEND: {
-            LOG(LL_DEBUG, ("onUPNPEvent MG_EV_SEND event"));
-            nc->flags |= MG_F_SEND_AND_CLOSE;
+            LOG(LL_INFO, ("onUPNPEvent MG_EV_SEND event"));
+            nc->flags |= MG_F_CLOSE_IMMEDIATELY;
             break;
         }
         case MG_EV_CLOSE: {
-            LOG(LL_DEBUG, ("onUPNPEvent MG_EV_CLOSE event"));
+            LOG(LL_INFO, ("onUPNPEvent MG_EV_CLOSE event"));
             break;
         }
         default: {
-            LOG(LL_DEBUG, ("onUPNPEvent not implemented for event %d", (ev)));
+            LOG(LL_INFO, ("onUPNPEvent not implemented for event %d", (ev)));
+            break;
+        }
+    }
+}
+
+void UPNPServer::onUDPOutEvent(mg_connection* nc, int ev, void* /*ev_data*/,
+                               void* /*user_data*/) {
+    UPNPServer* instance = static_cast<UPNPServer*>(nc->user_data);
+    if (instance == NULL) {
+        LOG(LL_INFO, ("onUDPOutEvent MG_EV_ACCEPT instance NULL"));
+    }
+
+    switch (ev) {
+        case MG_EV_POLL: {
+            // LOG(LL_DEBUG, ("onUPNPEvent MG_EV_POLL event"));
+            break;
+        }
+        case MG_EV_ACCEPT: {
+            // LOG(LL_INFO, ("onUPNPEvent MG_EV_ACCEPT event"));
+            break;
+        }
+        case MG_EV_RECV: {
+            LOG(LL_INFO, ("onUDPOutEvent MG_EV_RECV event"));
+            mbuf_clear(&nc->recv_mbuf);
+            break;
+        }
+        case MG_EV_SEND: {
+            LOG(LL_INFO, ("onUDPOutEvent MG_EV_SEND event"));
+            nc->flags |= MG_F_CLOSE_IMMEDIATELY;
+            break;
+        }
+        case MG_EV_CLOSE: {
+            LOG(LL_INFO, ("onUDPOutEvent MG_EV_CLOSE event"));
+            break;
+        }
+        default: {
+            LOG(LL_INFO, ("onUDPOutEvent not implemented for event %d", (ev)));
             break;
         }
     }
@@ -432,12 +500,15 @@ void UPNPServer::onNetworkEvent(int ev, void* /*evd*/, void* arg) {
 }
 
 bool UPNPServer::isValidDeviceInfo(const DeviceInfo& deviceInfo) const {
-    if (deviceInfo.name.size() >= DEVICE_NAME_MAX_LENGTH) return false;
+    if (deviceInfo.name.size() >= DEVICE_NAME_MAX_LENGTH) {
+        LOG(LL_ERROR, ("invalid device info - name is too long: %s",
+                       deviceInfo.name.c_str()));
+        return false;
+    }
     return true;
 }
 
-UPNPServer::UPNPServer()
-    : udpServer(nullptr), httpServer(nullptr), sendResponseRequest(false) {}
+UPNPServer::UPNPServer() {}
 
 void UPNPServer::init() {
     // register to wait on network ready
@@ -446,15 +517,15 @@ void UPNPServer::init() {
 
 // TODO: support new device including description
 bool UPNPServer::addDevice(const DeviceInfo& deviceInfo) {
+    LOG(LL_INFO, ("addDevice()"));
     if (!isValidDeviceInfo(deviceInfo)) return false;
 
     if (devices.find(deviceInfo.name) == devices.end()) {
-        LOG(LL_INFO, ("addDevice() - new device registered %s",
-                      deviceInfo.name.c_str()));
+        LOG(LL_INFO,
+            ("addDevice: new device registered [%s]", deviceInfo.name.c_str()));
         devices[deviceInfo.name] = deviceInfo;
         return true;
     } else
-        LOG(LL_ERROR,
-            ("addDevice() - device exists %s", deviceInfo.name.c_str()));
+        LOG(LL_ERROR, ("addDevice: device exists %s", deviceInfo.name.c_str()));
     return false;
 }

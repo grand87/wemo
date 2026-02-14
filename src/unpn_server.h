@@ -38,10 +38,9 @@ class UPNPServer {
     bool addDevice(const DeviceInfo& deviceInfo);
 
    private:
-    mg_connection* udpServer;
-    mg_connection* httpServer;
+    mg_connection* udpServer = nullptr;
+    mg_connection* httpServer = nullptr;
 
-    bool sendResponseRequest;
     enum ResponseRequestType { RRT_ROOTDEVICE, RRT_CLOSECOMPANION };
 
     ResponseRequestType sendResponseRequestType;
@@ -84,6 +83,9 @@ class UPNPServer {
 
     static void onUPNPEvent(mg_connection* nc, int ev, void* /*ev_data*/,
                             void* /*user_data*/);
+
+    static void onUDPOutEvent(mg_connection* nc, int ev, void* /*ev_data*/,
+                              void* /*user_data*/);
 
     static void onNetworkEvent(int ev, void* /*evd*/, void* arg);
 
